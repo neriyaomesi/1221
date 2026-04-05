@@ -68,6 +68,45 @@ DEFAULT_AI_INSTRUCTIONS = [
     "אל תמציא עובדות.",
 ]
 
+
+
+def get_dynamic_knowledge(user_prompt: str, limit: int = 5) -> str:
+    if not COMMANDS:
+        return ""
+        
+    # פירוק שאלת המשתמש למילים בודדות (ללא סימני פיסוק כדי לשפר חיפוש)
+    clean_prompt = "".join(c for c in user_prompt if c.isalnum() or c.isspace())
+    words = set(clean_prompt.split())
+    if not words:
+        return ""
+        
+    scored_replies = []
+    
+    for cmd, reply in COMMANDS.items():
+        score = 0
+        
+        # חיפוש מילים מהשאלה בתוך התגובה
+        for word in words:
+            if len(word) > 2 and word in reply: # מתעלמים ממילות קישור קצרות כמו "זה", "ה"
+                score += 1
+                
+        # בונוס: אם המשתמש כתב ממש את שם הפקודה
+        if cmd in user_prompt:
+            score += 10
+            
+        if score > 0:
+            scored_replies.append((score, reply))
+            
+    if not scored_replies:
+        return ""
+        
+    # מיון לפי הציון ולקיחת ה-X הכי רלוונטיים
+    scored_replies.sort(key=lambda x: x[0], reverse=True)
+    top_replies = [item[1] for item in scored_replies[:limit]]
+    
+    clean_replies = [" ".join(r.split()) for r in top_replies]
+    return "\nמידע רלוונטי שעשוי לעזור לך לענות (השתמש בו רק אם הוא קשור לשאלה): " + " | ".join(clean_replies)
+
 # ====================== GLOBAL STATE ======================
 flask_app = Flask(__name__)
 application = (
@@ -147,29 +186,13 @@ def save_stats() -> None:
 
 
 def rebuild_system_prompt() -> str:
-    # הוראות בסיס
-    lines = list(AI_PERSONA["instructions"]) if AI_PERSONA["instructions"] else ["ענה בעברית."]
-    
-    if COMMANDS:
-        lines.append("\nמידע נוסף שאתה מכיר:") # כותרת קצרה
-        
-        # חילוץ הערכים בלבד (התגובות)
-        # set() עוזר למנוע כפילויות אם יש פקודות שונות עם אותה תגובה
-        unique_replies = set(COMMANDS.values())
-        
-        # ניקוי רווחים מיותרים מכל תגובה וחיבורן ברצף
-        clean_replies = [" ".join(r.split()) for r in unique_replies]
-        
-        # חיבור הכל למקשה אחת עם מפריד מינימלי (.)
-        # זה נראה למודל כמו פסקאות של מידע
-        lines.append(". ".join(clean_replies))
+    lines = list(AI_PERSONA["instructions"]) if AI_PERSONA["instructions"] else ["ענה בעברית בקצרה ובאופן ברור."]
 
-    final_prompt = "\n".join(lines)
-    
-    # לוג למעקב אחרי הגודל
-    logger.info(f"System Prompt Size: {len(final_prompt)} chars")
-    
-    return final_prompt
+    # הוספת קצת סטטיסטיקה לאישיות (אופציונלי)
+    if STATS.get("ai", 0) > 0:
+        lines.append(f"סה\"כ שאילתות AI שנענו: {STATS['ai']}.")
+
+    return "\n".join(lines)
 
 
 def refresh_persona(reset_memory: bool = True) -> str:
@@ -376,9 +399,18 @@ async def ask_groq(user_id: int, prompt: str) -> str:
     if not GROQ_API_KEY:
         return "❌ לא הוגדר GROQ_API_KEY."
 
+    # --- הזרקת הקשר חכמה (Mini-RAG) ---
+    dynamic_context = get_dynamic_knowledge(prompt, limit=5)
+    base_system = SYSTEM_PROMPT_CACHE or rebuild_system_prompt()
+    
+    # מחברים את אישיות ה-AI הבסיסית עם המידע הספציפי שנשלף
+    if dynamic_context:
+        final_system_content = f"{base_system}\n{dynamic_context}"
+    else:
+        final_system_content = base_system
+
     history = list(CHAT_MEMORY[user_id])
-    system_content = SYSTEM_PROMPT_CACHE or rebuild_system_prompt()
-    messages = [{"role": "system", "content": system_content}]
+    messages = [{"role": "system", "content": final_system_content}]
     messages.extend(history)
     messages.append({"role": "user", "content": prompt})
 
