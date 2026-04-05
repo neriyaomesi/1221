@@ -147,26 +147,35 @@ def save_stats() -> None:
 
 
 def rebuild_system_prompt() -> str:
-    lines = list(AI_PERSONA["instructions"]) if AI_PERSONA["instructions"] else ["ענה בעברית בקצרה ובאופן ברור."]
+    # הוראות בסיס מינימליות
+    lines = ["ענה בעברית, קצר וחכם."]
+    if AI_PERSONA.get("instructions"):
+        lines.extend(AI_PERSONA["instructions"])
 
     if COMMANDS:
-        lines.append("")
-        lines.append("📚 פקודות זמינות במערכת (ענה עליהן אם ישאלו):")
+        lines.append("\nDB:") # כותרת קצרה מאוד במקום משפט שלם
+        
+        # דחיסה מקסימלית: פקודה:תגובה מופרדות בסימן מיוחד (|) כדי לחסוך ירידות שורה
+        # אנחנו יוצרים רשימה של "cmd:reply" ומחברים אותה במחרוזת אחת ארוכה
+        compressed_cmds = []
         for cmd, reply in COMMANDS.items():
-            lines.append(f"• {cmd} → {reply}")
-        lines.append(f"סה\"כ: {len(COMMANDS)} פקודות.")
-
-    if STATS.get("commands"):
-        top = sorted(STATS["commands"].items(), key=lambda x: x[1], reverse=True)[:5]
-        lines.append("")
-        lines.append("📊 פקודות הכי מבוקשות לאחרונה:")
-        for cmd, count in top:
-            lines.append(f"• {cmd} — {count} פעמים")
-
+            # ניקוי רווחים מיותרים מהתגובה כדי לצמצם תווים
+            short_reply = " ".join(reply.split())
+            compressed_cmds.append(f"{cmd}:{short_reply}")
+        
+        # מחברים הכל עם תו מפריד מינימלי
+        lines.append("|".join(compressed_cmds))
+        
+    # סטטיסטיקה בפורמט קצרצר
     if STATS.get("ai", 0) > 0:
-        lines.append(f"סה\"כ שאילתות AI שנענו: {STATS['ai']}.")
+        lines.append(f"AI:{STATS['ai']}")
 
-    return "\n".join(lines)
+    final_prompt = "\n".join(lines)
+    
+    # הדפסה ללוג כדי שתוכל לראות כמה זה שוקל (אופציונלי)
+    logger.info(f"System Prompt Size: {len(final_prompt)} characters")
+    
+    return final_prompt
 
 
 def refresh_persona(reset_memory: bool = True) -> str:
