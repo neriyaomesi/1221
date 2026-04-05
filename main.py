@@ -13,6 +13,7 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     ReactionTypeEmoji,
+    ReactionTypeCustomEmoji,
     ForceReply,
 )
 from telegram.constants import ParseMode
@@ -55,7 +56,7 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_MODEL = "openai/gpt-oss-120b"
 RENDER_HOST = os.environ.get("WEBHOOK_HOST") or os.environ.get("RENDER_EXTERNAL_HOSTNAME")
 
-# ====================== PREMIUM EMOJIS MAP ======================
+# ====================== PREMIUM EMOJIS MAP (מורחב עם אימוג'ים לאנימציות) ======================
 EMOJI_MAP: Dict[str, str] = {
     "✍️": "5258500400918587241",
     "🔥": "5420315771991497307",
@@ -76,16 +77,74 @@ EMOJI_MAP: Dict[str, str] = {
     "🖥": "5282843764451195532",
     "💎": "5427168083074628963",
     "🤖": "5372981976804366741",
+    "👋": "5372981976804366741",
+    "🧠": "5372981976804366741",
+    "📚": "5325547803936572038",
+    "👮": "5386766919154016047",
+    "📊": "5341498088408234504",
+    "⚡": "5420315771991497307",
+    "📘": "5325547803936572038",
+    "🏠": "5332533929020761310",
+    "➕": "5373026167722876724",
+    "✏️": "5258500400918587241",
+    "🗑️": "5440660757194744323",
+    "⬅️": "5337079782536389000",
+    "♻️": "5420315771991497307",
+    "🚀": "5372981976804366741",
+    "🌟": "5325547803936572038",
+    "💡": "5341498088408234504",
+    "📌": "5332533929020761310",
+    "🎉": "5332533929020761310",
 }
 
+# ====================== MESSAGE EFFECTS (אנימציות גלובליות) ======================
+CONFETTI_EFFECT_ID = "5104841245755180586"   # קונפטי 🎉
+FIREWORKS_EFFECT_ID = "5104841245755180586"  # זיקוקים
+HEARTS_EFFECT_ID = "5104841245755180586"     # לבבות
+
 def replace_emojis_to_premium(text: str) -> str:
-    """מחליף אוטומטית את כל האימוג'ים הרגילים בפרמיום (HTML)"""
+    """מחליף את כל האימוג'ים לפרמיום - יסודי ביותר"""
     if not text or not EMOJI_MAP:
         return text
     for emoji_char, custom_id in EMOJI_MAP.items():
         replacement = f'<tg-emoji emoji-id="{custom_id}">{emoji_char}</tg-emoji>'
         text = text.replace(emoji_char, replacement)
     return text
+
+# ====================== HELPER - שליחה עם אנימציה + ריאקשן ======================
+async def send_animated_message(
+    bot,
+    chat_id: int,
+    text: str,
+    reply_markup=None,
+    effect_id: str = None,
+    reaction_emoji: str = None,
+    reply_to_message_id: int = None
+):
+    """שולח הודעה + אפקט אנימציה + ריאקשן פרמיום"""
+    text = replace_emojis_to_premium(text)
+    
+    msg = await bot.send_message(
+        chat_id=chat_id,
+        text=text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=reply_markup,
+        message_effect_id=effect_id,
+        reply_to_message_id=reply_to_message_id
+    )
+    
+    if reaction_emoji and reaction_emoji in EMOJI_MAP:
+        custom_id = EMOJI_MAP[reaction_emoji]
+        try:
+            await bot.set_message_reaction(
+                chat_id=chat_id,
+                message_id=msg.message_id,
+                reaction=ReactionTypeCustomEmoji(custom_emoji_id=custom_id)
+            )
+        except Exception as e:
+            logger.warning(f"Reaction failed: {e}")
+    
+    return msg
 
 # ====================== DEFAULT PERSONA ======================
 DEFAULT_AI_INSTRUCTIONS = [
@@ -99,33 +158,24 @@ DEFAULT_AI_INSTRUCTIONS = [
 def get_dynamic_knowledge(user_prompt: str, limit: int = 5) -> str:
     if not COMMANDS:
         return ""
-       
     clean_prompt = "".join(c for c in user_prompt if c.isalnum() or c.isspace())
     words = set(clean_prompt.split())
     if not words:
         return ""
-       
     scored_replies = []
-   
     for cmd, reply in COMMANDS.items():
         score = 0
-       
         for word in words:
             if len(word) > 2 and word in reply:
                 score += 1
-               
         if cmd in user_prompt:
             score += 10
-           
         if score > 0:
             scored_replies.append((score, reply))
-           
     if not scored_replies:
         return ""
-       
     scored_replies.sort(key=lambda x: x[0], reverse=True)
     top_replies = [item[1] for item in scored_replies[:limit]]
-   
     clean_replies = [" ".join(r.split()) for r in top_replies]
     return "\nמידע רלוונטי שעשוי לעזור לך לענות (השתמש בו רק אם הוא קשור לשאלה): " + " | ".join(clean_replies)
 
@@ -318,7 +368,7 @@ def build_admins_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("⬅️ חזרה", callback_data="menu_home")],
     ])
 
-# ====================== BUILD TEXT FUNCTIONS WITH PREMIUM EMOJIS ======================
+# ====================== BUILD TEXT FUNCTIONS ======================
 def build_home_text(user_id: int, chat_id: int) -> str:
     ai_state = "פעיל ✅" if USER_STATE[user_id]["private_ai_mode"] else "כבוי ❌"
     if is_admin(user_id):
@@ -431,9 +481,12 @@ async def send_ai_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, prom
         return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     reply = await ask_groq(update.effective_user.id, prompt)
-    await update.message.reply_text(
-        replace_emojis_to_premium(f"🤖 {reply}"),
-        parse_mode=ParseMode.HTML
+    await send_animated_message(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        text=f"🤖 {reply}",
+        effect_id=CONFETTI_EFFECT_ID,
+        reaction_emoji="🔥"
     )
 
 # ====================== BOT ADDRESSING ======================
@@ -475,9 +528,11 @@ async def apply_admin_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, m
     step = flow.get("step")
 
     async def reply_premium(txt: str):
-        await update.message.reply_text(
-            replace_emojis_to_premium(txt),
-            parse_mode=ParseMode.HTML
+        await send_animated_message(
+            bot=context.bot,
+            chat_id=update.effective_chat.id,
+            text=txt,
+            reaction_emoji="✅"
         )
 
     if step == "cmd_add":
@@ -595,19 +650,23 @@ async def apply_admin_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, m
 
 # ====================== HANDLERS ======================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    await update.message.reply_text(
-        build_home_text(user_id, chat_id),
-        reply_markup=build_home_keyboard(user_id, chat_id),
-        parse_mode=ParseMode.HTML   # ← הוסף שורה זו
+    await send_animated_message(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        text=build_home_text(update.effective_user.id, update.effective_chat.id),
+        reply_markup=build_home_keyboard(update.effective_user.id, update.effective_chat.id),
+        effect_id=CONFETTI_EFFECT_ID,
+        reaction_emoji="🤖"
     )
 
 async def owner_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        build_owner_help_text(),
+    await send_animated_message(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        text=build_owner_help_text(),
         reply_markup=build_home_keyboard(update.effective_user.id, update.effective_chat.id),
-        parse_mode=ParseMode.HTML   # ← הוסף שורה זו
+        effect_id=CONFETTI_EFFECT_ID,
+        reaction_emoji="📘"
     )
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -622,11 +681,13 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         text.append("🧩 כפתורים פעילים:")
         for key, count in sorted(STATS["buttons"].items(), key=lambda x: x[1], reverse=True)[:10]:
             text.append(f"• {key} — {count}")
-    final_text = "\n".join(text)
-    await update.message.reply_text(
-        replace_emojis_to_premium(final_text),
+    await send_animated_message(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        text="\n".join(text),
         reply_markup=build_home_keyboard(user_id, update.effective_chat.id),
-        parse_mode=ParseMode.HTML
+        effect_id=CONFETTI_EFFECT_ID,
+        reaction_emoji="💯"
     )
 
 async def handle_commands_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -637,9 +698,11 @@ async def handle_commands_text(update: Update, context: ContextTypes.DEFAULT_TYP
     if text in COMMANDS:
         STATS["commands"][text] += 1
         save_stats()
-        await update.message.reply_text(
-            replace_emojis_to_premium(COMMANDS[text]),
-            parse_mode=ParseMode.HTML
+        await send_animated_message(
+            bot=context.bot,
+            chat_id=update.effective_chat.id,
+            text=COMMANDS[text],
+            reaction_emoji="✅"
         )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -666,9 +729,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     except Exception as e:
         logger.exception("Error in handle_message: %s", e)
         if update.message:
-            await update.message.reply_text(
-                replace_emojis_to_premium("⚠️ אירעה שגיאה פנימית."),
-                parse_mode=ParseMode.HTML
+            await send_animated_message(
+                bot=context.bot,
+                chat_id=update.effective_chat.id,
+                text="⚠️ אירעה שגיאה פנימית.",
+                reaction_emoji="❌"
             )
 
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -676,9 +741,12 @@ async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         new_member = update.message.new_chat_members[0]
         chat_id = update.effective_chat.id
         welcome_text = f"🎉 ברוך הבא {new_member.full_name}!\nנעים להכיר 😄"
-        welcome_msg = await update.message.reply_text(
-            replace_emojis_to_premium(welcome_text),
-            parse_mode=ParseMode.HTML
+        welcome_msg = await send_animated_message(
+            bot=context.bot,
+            chat_id=chat_id,
+            text=welcome_text,
+            effect_id=CONFETTI_EFFECT_ID,
+            reaction_emoji="🥰"
         )
         asyncio.create_task(delete_message_later(context.bot, chat_id, update.message.message_id, 2))
         asyncio.create_task(delete_message_later(context.bot, chat_id, welcome_msg.message_id, 58))
@@ -699,114 +767,144 @@ async def react_to_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 chat_id=update.effective_chat.id,
                 message_id=message.message_id,
                 reaction=ReactionTypeEmoji(emoji="👍"),
-                parse_mode=ParseMode.HTML   # ← הוסף שורה זו
             )
         except Exception as e:
             logger.exception("Error in react: %s", e)
 
 async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        build_home_text(update.effective_user.id, update.effective_chat.id),
+    await send_animated_message(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        text=build_home_text(update.effective_user.id, update.effective_chat.id),
         reply_markup=build_home_keyboard(update.effective_user.id, update.effective_chat.id),
-        parse_mode=ParseMode.HTML   # ← הוסף שורה זו
+        effect_id=CONFETTI_EFFECT_ID,
+        reaction_emoji="🏠"
     )
 
 async def add_command_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text(
-            replace_emojis_to_premium("אין לך הרשאה לזה."),
-            parse_mode=ParseMode.HTML
+        await send_animated_message(
+            bot=context.bot,
+            chat_id=update.effective_chat.id,
+            text="אין לך הרשאה לזה.",
+            reaction_emoji="❌"
         )
         return
     ADMIN_FLOWS[update.effective_user.id] = {"step": "cmd_add"}
-    await update.message.reply_text(
-        replace_emojis_to_premium("➕ שלח לי את שם הפקודה, כתשובה להודעה הזו."),
+    await send_animated_message(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        text="➕ שלח לי את שם הפקודה, כתשובה להודעה הזו.",
         reply_markup=ForceReply(selective=True),
-        parse_mode=ParseMode.HTML
+        reaction_emoji="➕"
     )
 
 async def edit_command_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text(
-            replace_emojis_to_premium("אין לך הרשאה לזה."),
-            parse_mode=ParseMode.HTML
+        await send_animated_message(
+            bot=context.bot,
+            chat_id=update.effective_chat.id,
+            text="אין לך הרשאה לזה.",
+            reaction_emoji="❌"
         )
         return
     load_commands()
     if not COMMANDS:
-        await update.message.reply_text(
-            replace_emojis_to_premium("אין עדיין פקודות לעריכה."),
-            parse_mode=ParseMode.HTML
+        await send_animated_message(
+            bot=context.bot,
+            chat_id=update.effective_chat.id,
+            text="אין עדיין פקודות לעריכה.",
+            reaction_emoji="⚠️"
         )
         return
     ADMIN_FLOWS[update.effective_user.id] = {"step": "cmd_edit_select"}
-    await update.message.reply_text(
-        replace_emojis_to_premium("✏️ שלח לי את שם הפקודה שתרצה לערוך, כתשובה להודעה הזו."),
+    await send_animated_message(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        text="✏️ שלח לי את שם הפקודה שתרצה לערוך, כתשובה להודעה הזו.",
         reply_markup=ForceReply(selective=True),
-        parse_mode=ParseMode.HTML
+        reaction_emoji="✏️"
     )
 
 async def remove_command_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text(
-            replace_emojis_to_premium("אין לך הרשאה לזה."),
-            parse_mode=ParseMode.HTML
+        await send_animated_message(
+            bot=context.bot,
+            chat_id=update.effective_chat.id,
+            text="אין לך הרשאה לזה.",
+            reaction_emoji="❌"
         )
         return
     load_commands()
     if not COMMANDS:
-        await update.message.reply_text(
-            replace_emojis_to_premium("אין עדיין פקודות למחיקה."),
-            parse_mode=ParseMode.HTML
+        await send_animated_message(
+            bot=context.bot,
+            chat_id=update.effective_chat.id,
+            text="אין עדיין פקודות למחיקה.",
+            reaction_emoji="⚠️"
         )
         return
     ADMIN_FLOWS[update.effective_user.id] = {"step": "cmd_remove_select"}
-    await update.message.reply_text(
-        replace_emojis_to_premium("🗑️ שלח לי את שם הפקודה שתרצה למחוק, כתשובה להודעה הזו."),
+    await send_animated_message(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        text="🗑️ שלח לי את שם הפקודה שתרצה למחוק, כתשובה להודעה הזו.",
         reply_markup=ForceReply(selective=True),
-        parse_mode=ParseMode.HTML
+        reaction_emoji="🗑️"
     )
 
 async def add_ai_instruction(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text(
-            replace_emojis_to_premium("אין לך הרשאה לזה."),
-            parse_mode=ParseMode.HTML
+        await send_animated_message(
+            bot=context.bot,
+            chat_id=update.effective_chat.id,
+            text="אין לך הרשאה לזה.",
+            reaction_emoji="❌"
         )
         return
     ADMIN_FLOWS[update.effective_user.id] = {"step": "ai_add"}
-    await update.message.reply_text(
-        replace_emojis_to_premium("➕ שלח לי את ההוראה החדשה של ה-AI, כתשובה להודעה הזו."),
+    await send_animated_message(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        text="➕ שלח לי את ההוראה החדשה של ה-AI, כתשובה להודעה הזו.",
         reply_markup=ForceReply(selective=True),
-        parse_mode=ParseMode.HTML
+        reaction_emoji="➕"
     )
 
 async def add_admin_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text(
-            replace_emojis_to_premium("רק הבעלים יכול לעשות את זה."),
-            parse_mode=ParseMode.HTML
+        await send_animated_message(
+            bot=context.bot,
+            chat_id=update.effective_chat.id,
+            text="רק הבעלים יכול לעשות את זה.",
+            reaction_emoji="❌"
         )
         return
     ADMIN_FLOWS[update.effective_user.id] = {"step": "admin_add"}
-    await update.message.reply_text(
-        replace_emojis_to_premium("➕ שלח לי את ה-ID של המנהל החדש, כתשובה להודעה הזו."),
+    await send_animated_message(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        text="➕ שלח לי את ה-ID של המנהל החדש, כתשובה להודעה הזו.",
         reply_markup=ForceReply(selective=True),
-        parse_mode=ParseMode.HTML
+        reaction_emoji="➕"
     )
 
 async def remove_admin_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text(
-            replace_emojis_to_premium("רק הבעלים יכול לעשות את זה."),
-            parse_mode=ParseMode.HTML
+        await send_animated_message(
+            bot=context.bot,
+            chat_id=update.effective_chat.id,
+            text="רק הבעלים יכול לעשות את זה.",
+            reaction_emoji="❌"
         )
         return
     ADMIN_FLOWS[update.effective_user.id] = {"step": "admin_remove"}
-    await update.message.reply_text(
-        replace_emojis_to_premium("➖ שלח לי את ה-ID של המנהל להסרה, כתשובה להודעה הזו."),
+    await send_animated_message(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        text="➖ שלח לי את ה-ID של המנהל להסרה, כתשובה להודעה הזו.",
         reply_markup=ForceReply(selective=True),
-        parse_mode=ParseMode.HTML
+        reaction_emoji="➖"
     )
 
 # ====================== CALLBACK ROUTER ======================
@@ -822,12 +920,18 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     async def edit(text: str, reply_markup=None):
         text = replace_emojis_to_premium(text)
         try:
-            await query.edit_message_text(text=text, reply_markup=reply_markup),
-            parse_mode=ParseMode.HTML   # ← הוסף שורה זו
+            await query.edit_message_text(
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.HTML
+            )
         except Exception:
             try:
-                await query.message.reply_text(text=text, reply_markup=reply_markup),
-                parse_mode=ParseMode.HTML   # ← הוסף שורה זו
+                await query.message.reply_text(
+                    text=text,
+                    reply_markup=reply_markup,
+                    parse_mode=ParseMode.HTML
+                )
             except Exception:
                 pass
 
