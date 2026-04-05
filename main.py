@@ -147,33 +147,27 @@ def save_stats() -> None:
 
 
 def rebuild_system_prompt() -> str:
-    # הוראות בסיס מינימליות
-    lines = ["ענה בעברית, קצר וחכם."]
-    if AI_PERSONA.get("instructions"):
-        lines.extend(AI_PERSONA["instructions"])
-
+    # הוראות בסיס
+    lines = list(AI_PERSONA["instructions"]) if AI_PERSONA["instructions"] else ["ענה בעברית."]
+    
     if COMMANDS:
-        lines.append("\nDB:") # כותרת קצרה מאוד במקום משפט שלם
+        lines.append("\nמידע נוסף שאתה מכיר:") # כותרת קצרה
         
-        # דחיסה מקסימלית: פקודה:תגובה מופרדות בסימן מיוחד (|) כדי לחסוך ירידות שורה
-        # אנחנו יוצרים רשימה של "cmd:reply" ומחברים אותה במחרוזת אחת ארוכה
-        compressed_cmds = []
-        for cmd, reply in COMMANDS.items():
-            # ניקוי רווחים מיותרים מהתגובה כדי לצמצם תווים
-            short_reply = " ".join(reply.split())
-            compressed_cmds.append(f"{cmd}:{short_reply}")
+        # חילוץ הערכים בלבד (התגובות)
+        # set() עוזר למנוע כפילויות אם יש פקודות שונות עם אותה תגובה
+        unique_replies = set(COMMANDS.values())
         
-        # מחברים הכל עם תו מפריד מינימלי
-        lines.append("|".join(compressed_cmds))
+        # ניקוי רווחים מיותרים מכל תגובה וחיבורן ברצף
+        clean_replies = [" ".join(r.split()) for r in unique_replies]
         
-    # סטטיסטיקה בפורמט קצרצר
-    if STATS.get("ai", 0) > 0:
-        lines.append(f"AI:{STATS['ai']}")
+        # חיבור הכל למקשה אחת עם מפריד מינימלי (.)
+        # זה נראה למודל כמו פסקאות של מידע
+        lines.append(". ".join(clean_replies))
 
     final_prompt = "\n".join(lines)
     
-    # הדפסה ללוג כדי שתוכל לראות כמה זה שוקל (אופציונלי)
-    logger.info(f"System Prompt Size: {len(final_prompt)} characters")
+    # לוג למעקב אחרי הגודל
+    logger.info(f"System Prompt Size: {len(final_prompt)} chars")
     
     return final_prompt
 
