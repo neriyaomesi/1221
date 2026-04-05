@@ -56,7 +56,7 @@ if not TOKEN:
     raise ValueError("TELEGRAM_TOKEN is missing")
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-GROQ_MODEL   = "llama-3.3-70b-versatile"
+GROQ_MODEL   = "groq/compound"
 RENDER_HOST  = os.environ.get("WEBHOOK_HOST") or os.environ.get("RENDER_EXTERNAL_HOSTNAME")
 
 # ====================== DEFAULT PERSONA ======================
