@@ -599,13 +599,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     await update.message.reply_text(
         build_home_text(user_id, chat_id),
-        reply_markup=build_home_keyboard(user_id, chat_id)
+        reply_markup=build_home_keyboard(user_id, chat_id),
+        parse_mode=ParseMode.HTML   # ← הוסף שורה זו
     )
 
 async def owner_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         build_owner_help_text(),
-        reply_markup=build_home_keyboard(update.effective_user.id, update.effective_chat.id)
+        reply_markup=build_home_keyboard(update.effective_user.id, update.effective_chat.id),
+        parse_mode=ParseMode.HTML   # ← הוסף שורה זו
     )
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -697,6 +699,7 @@ async def react_to_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 chat_id=update.effective_chat.id,
                 message_id=message.message_id,
                 reaction=ReactionTypeEmoji(emoji="👍"),
+                parse_mode=ParseMode.HTML   # ← הוסף שורה זו
             )
         except Exception as e:
             logger.exception("Error in react: %s", e)
@@ -704,7 +707,8 @@ async def react_to_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         build_home_text(update.effective_user.id, update.effective_chat.id),
-        reply_markup=build_home_keyboard(update.effective_user.id, update.effective_chat.id)
+        reply_markup=build_home_keyboard(update.effective_user.id, update.effective_chat.id),
+        parse_mode=ParseMode.HTML   # ← הוסף שורה זו
     )
 
 async def add_command_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -818,10 +822,12 @@ async def callback_router(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     async def edit(text: str, reply_markup=None):
         text = replace_emojis_to_premium(text)
         try:
-            await query.edit_message_text(text=text, reply_markup=reply_markup)
+            await query.edit_message_text(text=text, reply_markup=reply_markup),
+            parse_mode=ParseMode.HTML   # ← הוסף שורה זו
         except Exception:
             try:
-                await query.message.reply_text(text=text, reply_markup=reply_markup)
+                await query.message.reply_text(text=text, reply_markup=reply_markup),
+                parse_mode=ParseMode.HTML   # ← הוסף שורה זו
             except Exception:
                 pass
 
