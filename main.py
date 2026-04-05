@@ -448,7 +448,7 @@ async def send_ai_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, prom
         return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     reply = await ask_groq(update.effective_user.id, prompt)
-    await update.message.reply_text(f"🤖 {reply}")
+    await update.message.reply_text(f"🤖 {reply}", parse_mode='Markdown')
 
 
 # ====================== BOT ADDRESSING ======================
