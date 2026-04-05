@@ -1071,7 +1071,7 @@ def index():
 
 @flask_app.route("/ping")
 def ping():
-    return "OK", 200
+    return "OK", 100
 
 
 @flask_app.route("/setwebhook")
